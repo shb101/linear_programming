@@ -1,8 +1,35 @@
-# Revised simplex method
-function revised_primal_simplex(c::Vector{Float64}
-                                , A::Matrix{Float64}
-                                , b::Vector{Float64}
-                                , basis::Vector{Int64})
+# Revised Simplex Method Implementation
+# Author: Shobhit Bhatnagar
+
+using LinearAlgebra
+
+function get_min(array, filter)
+    minValue = Inf
+    minIndex = 0
+    for i in 1:length(array)
+        if (array[i] < minValue) && (filter[i])
+            minValue = array[i]
+            minIndex = i
+        end
+    end
+    return (minValue, minIndex)
+end
+
+function update_basis_inverse(A::Matrix{Float64}, B::Matrix{Float64}, i::Int64, j::Int64)
+    # i is the index of the leaving variable
+    # j is the index of the entering variable
+    d = B * A[:, j]
+    tmp = d[i]
+    d = -d ./ tmp
+    d[i] /= -tmp
+
+    n = length(d)
+    E = Matrix{Float64}(1.0I, n, n)
+    E[:, i] = d
+    B = E * B
+end
+
+function revised_primal_simplex(c::Vector{Float64}, A::Matrix{Float64}, b::Vector{Float64}, basis::Vector{Int64})
     # Solves the problem:
     # min c' x
     # subject to A x = b
@@ -27,59 +54,38 @@ function revised_primal_simplex(c::Vector{Float64}
     x[basis] = A[:, basis] \ b
     while true
         println("Iter: ", iter)
-        println("- basis: ", basis)
-        println("- solution: ", x)
+        println("-> basis: ", basis)
+        println("-> solution: ", x)
 
         y = transpose(A[:, basis]) \ c[basis]
         z = transpose(A[:, not_basis]) * y - c[not_basis]
 
-        # find the entering variable:
-        k = n + 1
-        enter_loc = -1
-        cost = -1
-        for s in 1:length(not_basis)
-            if (not_basis[s] < k) && (z[s] > 0)
-                k = not_basis[s]
-                enter_loc = s
-                cost = z[s]
-            end
-        end
-        # k is the entering variable
-        if cost > 0
+        # Find the entering variable:
+        (k, entering_var_index) = get_min(not_basis, z .> 0)
+
+        if (entering_var_index > 0)
             d_basis = -(A[:, basis] \ A[:, k])
             d = zeros(n)
             d[basis] = d_basis
             d[k] = 1.0
 
-            candidates = d_basis .< 0
-            if !any(candidates)
+            if all(d_basis .>= 0)
                 println("Error: problem is unbounded; returning direction")
                 return d
             end
 
-            # find the leaving variable using the ratio test
-            lambda = Inf
-            r = n + 1
-            leave_loc = -1
-            for i in 1:length(basis)
-                if d[basis[i]] < 0
-                    tmp = x[basis[i]]/(-d[basis[i]])
-                    if (lambda >= tmp) && (r > basis[i])
-                        lambda = tmp
-                        r = basis[i]
-                        leave_loc = i
-                    end
-                end
-            end
+            # Find the leaving variable using the ratio test:
+            ratios = x ./ (-d)
+            (lambda, _) = get_min(ratios, d .< 0)
+            (r, leaving_var_index) = get_min(basis, ratios .== lambda)
 
             # update the solution:
-            x += lambda * d
+            x .+= lambda * d
 
-            # r is the leaving variable
-            # update the basis:
-            tmp = not_basis[enter_loc]
-            not_basis[enter_loc] = basis[leave_loc]
-            basis[leave_loc] = tmp
+            # Update the basis:
+            tmp = not_basis[entering_var_index]
+            not_basis[entering_var_index] = basis[leaving_var_index]
+            basis[leaving_var_index] = tmp
         else
             break
         end
@@ -89,13 +95,11 @@ function revised_primal_simplex(c::Vector{Float64}
     return x
 end
 
-function revised_dual_simplex(c::Vector{Float64}
-                             , A::Matrix{Float64}
-                             , b::Vector{Float64}
-                             , basis::Vector{Int64})
+function revised_dual_simplex(c::Vector{Float64}, A::Matrix{Float64}, b::Vector{Float64}, basis::Vector{Int64})
     # Solves the problem:
     # max y' b
     # subject to y' A <= c
+
     n = length(c)
     m = length(b)
     (m1, n1) = size(A)
@@ -116,59 +120,44 @@ function revised_dual_simplex(c::Vector{Float64}
 
     while true
         println("Iter: ", iter)
-        println("- basis: ", basis)
-        println("- solution: ", y)
+        println("-> basis: ", basis)
+        println("-> solution: ", y)
 
         x = A[:, basis] \ b
 
-        # find the leaving variable
-        r = n+1
-        leave_loc = -1
-        for i in 1:length(x)
-            if (x[i] < 0) && (basis[i] < r)
-                leave_loc = i
-                r = basis[i]
-            end
-        end
+        # Find the leaving variable:
+        (r, leaving_var_index) = get_min(basis, x .< 0)
 
-        # r is the leaving variable
-        if r < n+1
+        if (leaving_var_index > 0)
             q = zeros(m)
-            q[leave_loc] = -1.0
+            q[leaving_var_index] = -1.0
             d = transpose(A[:, basis]) \ q
             u = transpose(A[:, not_basis]) * d
 
             if all(u .<= 0)
-                # unbounded
-                println("Error: problem is unbounded")
+                # Dual unbounded => Primal infeasible
+                println("Error: problem is unbounded; returning direction")
                 return d
             else
                 z = c[not_basis] - transpose(A[:, not_basis]) * y
-                # find the entering variable
-                lambda = Inf
-                k = n + 1
-                enter_loc = -1
-                for j in 1:length(not_basis)
-                    if (u[j] > 0)
-                        tmp = z[j] / u[j]
-                        if (lambda >= tmp) && (not_basis[j] < k)
-                            lambda = tmp
-                            k = not_basis[j]
-                            enter_loc = j
-                        end
-                    end
-                end
+                ratios = z ./ u
 
-                y += lambda * d
+                # Find the entering variable:
+                (lambda, _) = get_min(ratios, u .> 0)
+                (k, entering_var_index) = get_min(not_basis, ratios .== lambda)
 
-                tmp = not_basis[enter_loc]
-                not_basis[enter_loc] = basis[leave_loc]
-                basis[leave_loc] = tmp
+                y .+= lambda * d
+
+                tmp = not_basis[entering_var_index]
+                not_basis[entering_var_index] = basis[leaving_var_index]
+                basis[leaving_var_index] = tmp
             end
 
         else
             break
         end
+
+        iter += 1
     end
     return y
 end
