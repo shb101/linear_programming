@@ -15,18 +15,19 @@ function get_min(array, filter)
     return (minValue, minIndex)
 end
 
-function update_basis_inverse(A::Matrix{Float64}, B::Matrix{Float64}, i::Int64, j::Int64)
-    # i is the index of the leaving variable
+function update_basis_inverse!(A::Matrix{Float64}, B::Matrix{Float64}, i::Int64, j::Int64)
+    # i is the index of the leaving variable in the basis
     # j is the index of the entering variable
     d = B * A[:, j]
     tmp = d[i]
-    d = -d ./ tmp
+    d .= -d ./ tmp
     d[i] /= -tmp
+
 
     n = length(d)
     E = Matrix{Float64}(1.0I, n, n)
     E[:, i] = d
-    B = E * B
+    B .= E * B
 end
 
 function revised_primal_simplex(c::Vector{Float64}, A::Matrix{Float64}, b::Vector{Float64}, basis::Vector{Int64})
@@ -51,20 +52,21 @@ function revised_primal_simplex(c::Vector{Float64}, A::Matrix{Float64}, b::Vecto
     end
     iter = 0
     x = zeros(n)
-    x[basis] = A[:, basis] \ b
+    B = inv(A[:, basis])
+    x[basis] = B * b
+
     while true
         println("Iter: ", iter)
         println("-> basis: ", basis)
         println("-> solution: ", x)
 
-        y = transpose(A[:, basis]) \ c[basis]
+        y = transpose(B) * c[basis]
         z = transpose(A[:, not_basis]) * y - c[not_basis]
-
         # Find the entering variable:
         (k, entering_var_index) = get_min(not_basis, z .> 0)
 
         if (entering_var_index > 0)
-            d_basis = -(A[:, basis] \ A[:, k])
+            d_basis = -B * A[:, k]
             d = zeros(n)
             d[basis] = d_basis
             d[k] = 1.0
@@ -83,9 +85,12 @@ function revised_primal_simplex(c::Vector{Float64}, A::Matrix{Float64}, b::Vecto
             x .+= lambda * d
 
             # Update the basis:
+            update_basis_inverse!(A, B, leaving_var_index, k)
+
             tmp = not_basis[entering_var_index]
             not_basis[entering_var_index] = basis[leaving_var_index]
             basis[leaving_var_index] = tmp
+
         else
             break
         end
@@ -116,22 +121,22 @@ function revised_dual_simplex(c::Vector{Float64}, A::Matrix{Float64}, b::Vector{
     end
 
     iter = 0
-    y = transpose(A[:, basis]) \ c[basis]
+    B = inv(A[:, basis])
+    y = transpose(B) * c[basis]
 
     while true
         println("Iter: ", iter)
         println("-> basis: ", basis)
         println("-> solution: ", y)
 
-        x = A[:, basis] \ b
-
+        x = B * b
         # Find the leaving variable:
         (r, leaving_var_index) = get_min(basis, x .< 0)
 
         if (leaving_var_index > 0)
             q = zeros(m)
             q[leaving_var_index] = -1.0
-            d = transpose(A[:, basis]) \ q
+            d = transpose(B) * q
             u = transpose(A[:, not_basis]) * d
 
             if all(u .<= 0)
@@ -147,6 +152,9 @@ function revised_dual_simplex(c::Vector{Float64}, A::Matrix{Float64}, b::Vector{
                 (k, entering_var_index) = get_min(not_basis, ratios .== lambda)
 
                 y .+= lambda * d
+
+                # Update the basis:
+                update_basis_inverse!(A, B, leaving_var_index, k)
 
                 tmp = not_basis[entering_var_index]
                 not_basis[entering_var_index] = basis[leaving_var_index]
