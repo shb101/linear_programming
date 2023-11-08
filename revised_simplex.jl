@@ -3,6 +3,7 @@
 
 module RevisedSimplex
     using LinearAlgebra
+
     function get_min(array, filter)
         minValue = Inf
         minIndex = 0
@@ -53,9 +54,9 @@ module RevisedSimplex
         x[basis] = B * b
 
         while true
-            println("Iter: ", iter)
-            println("-> basis: ", basis)
-            println("-> solution: ", x)
+            # println("Iter: ", iter)
+            # println("-> basis: ", basis)
+            # println("-> solution: ", x)
 
             y = transpose(B) * c[basis]
             z = transpose(A[:, not_basis]) * y - c[not_basis]
