@@ -2,7 +2,7 @@
 # Author: Shobhit Bhatnagar
 
 include("revised_simplex.jl")
-using Main.RevisedSimplex, LinearAlgebra, Random, JuMP, Cbc
+using Main.RevisedSimplex, LinearAlgebra, Random
 
 Random.seed!(0)
 
@@ -66,22 +66,11 @@ function solve_assignment_problem(cost::Matrix{Float64})
         end
     end
     optimal_cost = sum(c1 .* x)
-    
-    # print("Shobhit's solution: ", optimal_cost)
-    # # Verification
-    # model = Model(Cbc.Optimizer)
-    # @variable(model, x_var[1:length(c1)] >= 0)
-    # @objective(model, Min, sum(c1 .* x_var))
-    # @constraint(model, A * x_var .== b)
-    # optimize!(model)
-    # sol_cbc = Vector{Int64}(round.(value.(model[:x_var])))
-    # obj_cbc = sum(c1 .* sol_cbc)
-    # println("CBC solution: ", obj_cbc)
 
     return (assignments, optimal_cost)
 end
 
-cost_matrix = generate_assignment_problem(100)
+cost_matrix = generate_assignment_problem(50)
 println("Cost matrix: ")
 (n, _) = size(cost_matrix)
 for i in 1:n
